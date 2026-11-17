@@ -8,7 +8,18 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☪</text></svg>" />
 </head>
 <body>
-  <div class="app">
+  <!-- Name Gate Overlay -->
+  <div id="nameGate" class="name-gate">
+    <div class="name-gate-card">
+      <h2>MAAR Believe</h2>
+      <p>Please enter your name to start watching</p>
+      <input type="text" id="nameInput" placeholder="Your name..." maxlength="40" autocomplete="name" />
+      <button id="startBtn" disabled>Start Watching</button>
+      <p class="gate-hint">Your name will be saved with your progress for this shared link.</p>
+    </div>
+  </div>
+
+  <div class="app" id="mainApp" style="display:none;">
     <header>
       <h1>MAAR Believe</h1>
       <p class="subtitle">The prophecies that lead to the Final Messenger</p>
@@ -40,6 +51,9 @@
 
       <div class="stats-box" id="statsBox">
         <h2>Your Viewing Progress</h2>
+        <div class="viewer-name">
+          Watching as: <strong id="viewerNameDisplay">—</strong>
+        </div>
         <div class="stats-grid">
           <div class="stat">
             <span class="stat-label">Watched</span>
@@ -68,7 +82,7 @@
         </div>
         <div class="group-info">
           <p>Group / Shared Link ID: <strong id="groupIdDisplay">—</strong></p>
-          <p class="hint">Share this page URL with friends. Progress is saved per browser under this group ID. Open the same link on any device to continue your own progress. (True multi-user live sharing needs a backend service.)</p>
+          <p class="hint">Share this page URL with friends. Progress is saved per browser under this group ID.</p>
         </div>
       </div>
 

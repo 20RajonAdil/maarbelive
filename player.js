@@ -13,7 +13,6 @@
     const params = new URLSearchParams(window.location.search);
     let id = params.get("group") || params.get("id") || params.get("g");
     if (!id) {
-      // Generate a short random group id and put it in the URL so it can be shared
       id = "g" + Math.random().toString(36).slice(2, 8);
       const url = new URL(window.location.href);
       url.searchParams.set("group", id);
@@ -26,14 +25,21 @@
 
   // ---- State ----
   const groupId = getGroupId();
+  let viewerName = "";
   let maxWatched = 0;
   let skipAttempts = 0;
   let pauseCount = 0;
   let sessionCount = 1;
   let isSeeking = false;
   let lastSave = 0;
+  let nameEntered = false;
 
   // ---- DOM ----
+  const nameGate = document.getElementById("nameGate");
+  const nameInput = document.getElementById("nameInput");
+  const startBtn = document.getElementById("startBtn");
+  const mainApp = document.getElementById("mainApp");
+
   const video = document.getElementById("video");
   const playPauseBtn = document.getElementById("playPauseBtn");
   const seekBar = document.getElementById("seekBar");
@@ -51,10 +57,43 @@
   const sessionCountEl = document.getElementById("sessionCount");
   const statusEl = document.getElementById("status");
   const groupIdDisplay = document.getElementById("groupIdDisplay");
+  const viewerNameDisplay = document.getElementById("viewerNameDisplay");
 
   groupIdDisplay.textContent = groupId;
 
-  // ---- Load saved progress ----
+  // ---- Name Gate Logic ----
+  function checkNameInput() {
+    const val = nameInput.value.trim();
+    startBtn.disabled = val.length < 1;
+  }
+
+  nameInput.addEventListener("input", checkNameInput);
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !startBtn.disabled) {
+      startBtn.click();
+    }
+  });
+
+  startBtn.addEventListener("click", () => {
+    const name = nameInput.value.trim();
+    if (name.length < 1) return;
+
+    viewerName = name;
+    nameEntered = true;
+    viewerNameDisplay.textContent = viewerName;
+
+    // Hide gate, show app
+    nameGate.style.display = "none";
+    mainApp.style.display = "block";
+
+    // Save name with progress
+    saveProgress();
+
+    // Focus video area
+    showControls();
+  });
+
+  // ---- Load / Save ----
   function loadProgress() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY + groupId);
@@ -64,19 +103,25 @@
         skipAttempts = data.skipAttempts || 0;
         pauseCount = data.pauseCount || 0;
         sessionCount = (data.sessionCount || 0) + 1;
+        if (data.viewerName) {
+          viewerName = data.viewerName;
+          nameInput.value = viewerName;
+          checkNameInput();
+        }
       }
     } catch (e) {
       console.warn("Could not load progress", e);
     }
-    updateStatsUI();
   }
 
   function saveProgress() {
+    if (!nameEntered && !viewerName) return;
     const now = Date.now();
-    if (now - lastSave < 800) return; // throttle
+    if (now - lastSave < 800) return;
     lastSave = now;
     try {
       const data = {
+        viewerName: viewerName,
         maxWatched,
         skipAttempts,
         pauseCount,
@@ -130,19 +175,16 @@
     return false;
   }
 
-  // Update max watched while playing normally
   video.addEventListener("timeupdate", () => {
+    if (!nameEntered) return;
     if (!isSeeking && !video.paused) {
       if (video.currentTime > maxWatched) {
         maxWatched = video.currentTime;
-        // tiny safety so we never go backwards on tiny fluctuations
         if (maxWatched > (video.duration || 0)) maxWatched = video.duration;
       }
     }
-    // always clamp if somehow jumped ahead
     clampToMax();
 
-    // UI
     const dur = video.duration || 1;
     const curPct = (video.currentTime / dur) * 100;
     const maxPct = (maxWatched / dur) * 100;
@@ -154,13 +196,12 @@
     saveProgress();
   });
 
-  // When user tries to seek via the range input
   seekBar.addEventListener("input", () => {
+    if (!nameEntered) return;
     isSeeking = true;
     const dur = video.duration || 1;
     const target = (seekBar.value / 100) * dur;
     if (target > maxWatched + 0.2) {
-      // reject forward seek
       seekBar.value = (maxWatched / dur) * 100;
       skipAttempts += 1;
       updateStatsUI();
@@ -175,8 +216,8 @@
     isSeeking = false;
   });
 
-  // Native seeking (keyboard, etc.)
   video.addEventListener("seeking", () => {
+    if (!nameEntered) return;
     if (video.currentTime > maxWatched + 0.4) {
       video.currentTime = maxWatched;
       skipAttempts += 1;
@@ -193,6 +234,7 @@
 
   // Play / Pause
   playPauseBtn.addEventListener("click", () => {
+    if (!nameEntered) return;
     if (video.paused) {
       video.play();
     } else {
@@ -201,13 +243,17 @@
   });
 
   video.addEventListener("play", () => {
+    if (!nameEntered) {
+      video.pause();
+      return;
+    }
     playPauseBtn.textContent = "❚❚";
     statusEl.textContent = "Watching";
   });
 
   video.addEventListener("pause", () => {
     playPauseBtn.textContent = "▶";
-    if (!video.ended) {
+    if (!video.ended && nameEntered) {
       pauseCount += 1;
       updateStatsUI();
       saveProgress();
@@ -239,7 +285,7 @@
     }
   });
 
-  // Show controls on interaction
+  // Show controls
   let hideControlsTimer;
   function showControls() {
     controls.classList.add("visible");
@@ -248,15 +294,18 @@
       if (!video.paused) controls.classList.remove("visible");
     }, 3000);
   }
-  document.querySelector(".video-container").addEventListener("mousemove", showControls);
-  document.querySelector(".video-container").addEventListener("touchstart", showControls);
+  const videoContainer = document.querySelector(".video-container");
+  if (videoContainer) {
+    videoContainer.addEventListener("mousemove", showControls);
+    videoContainer.addEventListener("touchstart", showControls);
+  }
 
-  // Visibility / close tracking
+  // Visibility / close
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       statusEl.textContent = "Tab hidden";
       saveProgress();
-    } else {
+    } else if (nameEntered) {
       statusEl.textContent = video.paused ? "Paused" : "Watching";
     }
   });
@@ -265,8 +314,9 @@
     saveProgress();
   });
 
-  // Keyboard shortcuts
+  // Keyboard
   document.addEventListener("keydown", (e) => {
+    if (!nameEntered) return;
     if (e.target.tagName === "INPUT") return;
     if (e.code === "Space") {
       e.preventDefault();
@@ -274,7 +324,6 @@
     } else if (e.code === "ArrowLeft") {
       video.currentTime = Math.max(0, video.currentTime - 5);
     } else if (e.code === "ArrowRight") {
-      // only allow if within max
       const target = video.currentTime + 5;
       if (target <= maxWatched + 0.3) {
         video.currentTime = target;
@@ -293,17 +342,23 @@
 
   // Init
   video.addEventListener("loadedmetadata", () => {
-    // Restore position a little before max so user can continue
     if (maxWatched > 5 && maxWatched < video.duration - 2) {
       video.currentTime = Math.max(0, maxWatched - 1.5);
     }
     updateStatsUI();
   });
 
-  loadProgress();
-  // Force initial UI
-  updateStatsUI();
+  // Prevent play before name
+  video.addEventListener("play", function blockPlay(e) {
+    if (!nameEntered) {
+      e.preventDefault();
+      video.pause();
+    }
+  }, true);
 
-  // Make controls visible at start
-  controls.classList.add("visible");
+  // Load any previous name/progress
+  loadProgress();
+
+  // Auto-focus the name input
+  setTimeout(() => nameInput.focus(), 100);
 })();
