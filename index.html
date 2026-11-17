@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MAAR Believe – Watch the Full Message</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☪</text></svg>" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>MAAR Believe</h1>
+      <p class="subtitle">The prophecies that lead to the Final Messenger</p>
+    </header>
+
+    <main>
+      <div class="video-container">
+        <video id="video" preload="metadata" playsinline>
+          <source src="video.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+
+        <div class="controls" id="controls">
+          <button id="playPauseBtn" class="control-btn" title="Play / Pause">▶</button>
+          <div class="progress-bar-container" id="progressContainer">
+            <div class="progress-bar-bg">
+              <div class="progress-watched" id="watchedBar"></div>
+              <div class="progress-current" id="currentBar"></div>
+            </div>
+            <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" />
+          </div>
+          <span id="timeDisplay" class="time">0:00 / 0:00</span>
+          <button id="muteBtn" class="control-btn" title="Mute">🔊</button>
+          <button id="fullscreenBtn" class="control-btn" title="Fullscreen">⛶</button>
+        </div>
+
+        <div class="seek-warning" id="seekWarning">You can only go back. Forward seeking is locked until you watch further.</div>
+      </div>
+
+      <div class="stats-box" id="statsBox">
+        <h2>Your Viewing Progress</h2>
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="stat-label">Watched</span>
+            <span class="stat-value" id="percentWatched">0%</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Max reached</span>
+            <span class="stat-value" id="maxTime">0:00</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Forward skips blocked</span>
+            <span class="stat-value" id="skipCount">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Pauses</span>
+            <span class="stat-value" id="pauseCount">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Sessions</span>
+            <span class="stat-value" id="sessionCount">1</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Status</span>
+            <span class="stat-value" id="status">Watching</span>
+          </div>
+        </div>
+        <div class="group-info">
+          <p>Group / Shared Link ID: <strong id="groupIdDisplay">—</strong></p>
+          <p class="hint">Share this page URL with friends. Progress is saved per browser under this group ID. Open the same link on any device to continue your own progress. (True multi-user live sharing needs a backend service.)</p>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <h3>How this player works</h3>
+        <ul>
+          <li>You can pause, resume, and go <strong>backward</strong> freely.</li>
+          <li>You <strong>cannot skip forward</strong> past what you have already watched.</li>
+          <li>Progress is saved automatically. If you close the tab, your max watched time is remembered for this group link.</li>
+          <li>Watch the full video to unlock the complete message.</li>
+        </ul>
+      </div>
+    </main>
+
+    <footer>
+      <p>MAAR Believe · Share the truth · Watch fully</p>
+    </footer>
+  </div>
+
+  <script src="player.js"></script>
+</body>
+</html>
