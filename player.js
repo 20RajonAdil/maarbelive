@@ -1,6 +1,10 @@
 (function () {
   "use strict";
 
+  // ---- Shared Reports Config (jstash trial bin) ----
+  const SHARED_API = "https://api.jstash.app/v1/bins/qIkmJyRs5uFKBpGpTm-Z2w/content";
+  const EDIT_TOKEN = "js_edit_Fin1alMxk565CdVqED_Yge1CBChknXAq1SWHmhOyxBY";
+
   // ---- Helpers ----
   function formatTime(seconds) {
     if (!isFinite(seconds) || seconds < 0) return "0:00";
@@ -21,6 +25,11 @@
     return id;
   }
 
+  function isAdminMode() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("admin") === "1" || params.get("admin") === "true";
+  }
+
   const STORAGE_KEY = "maar_believe_progress_";
 
   // ---- State ----
@@ -33,6 +42,7 @@
   let isSeeking = false;
   let lastSave = 0;
   let nameEntered = false;
+  let lastSharedSync = 0;
 
   // ---- DOM ----
   const nameGate = document.getElementById("nameGate");
@@ -61,7 +71,7 @@
 
   groupIdDisplay.textContent = groupId;
 
-  // ---- Name Gate Logic ----
+  // ---- Name Gate ----
   function checkNameInput() {
     const val = nameInput.value.trim();
     startBtn.disabled = val.length < 1;
@@ -69,9 +79,7 @@
 
   nameInput.addEventListener("input", checkNameInput);
   nameInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !startBtn.disabled) {
-      startBtn.click();
-    }
+    if (e.key === "Enter" && !startBtn.disabled) startBtn.click();
   });
 
   startBtn.addEventListener("click", () => {
@@ -82,18 +90,15 @@
     nameEntered = true;
     viewerNameDisplay.textContent = viewerName;
 
-    // Hide gate, show app
     nameGate.style.display = "none";
     mainApp.style.display = "block";
 
-    // Save name with progress
     saveProgress();
-
-    // Focus video area
+    syncToShared(); // first sync
     showControls();
   });
 
-  // ---- Load / Save ----
+  // ---- Load / Save local ----
   function loadProgress() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY + groupId);
@@ -121,7 +126,7 @@
     lastSave = now;
     try {
       const data = {
-        viewerName: viewerName,
+        viewerName,
         maxWatched,
         skipAttempts,
         pauseCount,
@@ -132,6 +137,60 @@
       localStorage.setItem(STORAGE_KEY + groupId, JSON.stringify(data));
     } catch (e) {
       console.warn("Could not save progress", e);
+    }
+  }
+
+  // ---- Shared Reports ----
+  async function syncToShared() {
+    if (!viewerName || !nameEntered) return;
+    const now = Date.now();
+    if (now - lastSharedSync < 4000) return; // throttle shared writes
+    lastSharedSync = now;
+
+    try {
+      // Get current data
+      const res = await fetch(SHARED_API);
+      let data = { viewers: {} };
+      if (res.ok) {
+        data = await res.json();
+        if (!data.viewers) data.viewers = {};
+      }
+
+      const key = groupId + "_" + viewerName.toLowerCase().replace(/\s+/g, "_");
+      data.viewers[key] = {
+        name: viewerName,
+        groupId,
+        maxWatched,
+        percent: video.duration ? Math.min(100, (maxWatched / video.duration) * 100) : 0,
+        skipAttempts,
+        pauseCount,
+        sessionCount,
+        lastUpdated: now,
+        duration: video.duration || 0
+      };
+
+      await fetch(SHARED_API, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + EDIT_TOKEN
+        },
+        body: JSON.stringify(data)
+      });
+    } catch (e) {
+      console.warn("Shared sync failed", e);
+    }
+  }
+
+  async function loadAllReports() {
+    try {
+      const res = await fetch(SHARED_API + "?t=" + Date.now());
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      return data.viewers || {};
+    } catch (e) {
+      console.warn("Could not load reports", e);
+      return {};
     }
   }
 
@@ -157,18 +216,17 @@
   function showSeekWarning() {
     seekWarning.classList.add("show");
     clearTimeout(showSeekWarning._t);
-    showSeekWarning._t = setTimeout(() => {
-      seekWarning.classList.remove("show");
-    }, 2200);
+    showSeekWarning._t = setTimeout(() => seekWarning.classList.remove("show"), 2200);
   }
 
-  // ---- Core restriction logic ----
+  // ---- Core restriction ----
   function clampToMax() {
     if (video.currentTime > maxWatched + 0.35) {
       video.currentTime = maxWatched;
       skipAttempts += 1;
       updateStatsUI();
       saveProgress();
+      syncToShared();
       showSeekWarning();
       return true;
     }
@@ -194,6 +252,7 @@
     timeDisplay.textContent = formatTime(video.currentTime) + " / " + formatTime(dur);
     updateStatsUI();
     saveProgress();
+    syncToShared();
   });
 
   seekBar.addEventListener("input", () => {
@@ -212,9 +271,7 @@
     }
   });
 
-  seekBar.addEventListener("change", () => {
-    isSeeking = false;
-  });
+  seekBar.addEventListener("change", () => { isSeeking = false; });
 
   video.addEventListener("seeking", () => {
     if (!nameEntered) return;
@@ -232,14 +289,10 @@
     isSeeking = false;
   });
 
-  // Play / Pause
   playPauseBtn.addEventListener("click", () => {
     if (!nameEntered) return;
-    if (video.paused) {
-      video.play();
-    } else {
-      video.pause();
-    }
+    if (video.paused) video.play();
+    else video.pause();
   });
 
   video.addEventListener("play", () => {
@@ -257,6 +310,7 @@
       pauseCount += 1;
       updateStatsUI();
       saveProgress();
+      syncToShared();
     }
   });
 
@@ -265,17 +319,16 @@
     playPauseBtn.textContent = "▶";
     updateStatsUI();
     saveProgress();
+    syncToShared();
     statusEl.textContent = "Completed";
     statusEl.style.color = "var(--success)";
   });
 
-  // Mute
   muteBtn.addEventListener("click", () => {
     video.muted = !video.muted;
     muteBtn.textContent = video.muted ? "🔇" : "🔊";
   });
 
-  // Fullscreen
   fullscreenBtn.addEventListener("click", () => {
     const container = document.querySelector(".video-container");
     if (!document.fullscreenElement) {
@@ -285,7 +338,6 @@
     }
   });
 
-  // Show controls
   let hideControlsTimer;
   function showControls() {
     controls.classList.add("visible");
@@ -300,11 +352,11 @@
     videoContainer.addEventListener("touchstart", showControls);
   }
 
-  // Visibility / close
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       statusEl.textContent = "Tab hidden";
       saveProgress();
+      syncToShared();
     } else if (nameEntered) {
       statusEl.textContent = video.paused ? "Paused" : "Watching";
     }
@@ -312,9 +364,9 @@
 
   window.addEventListener("beforeunload", () => {
     saveProgress();
+    syncToShared();
   });
 
-  // Keyboard
   document.addEventListener("keydown", (e) => {
     if (!nameEntered) return;
     if (e.target.tagName === "INPUT") return;
@@ -340,7 +392,6 @@
     }
   });
 
-  // Init
   video.addEventListener("loadedmetadata", () => {
     if (maxWatched > 5 && maxWatched < video.duration - 2) {
       video.currentTime = Math.max(0, maxWatched - 1.5);
@@ -348,7 +399,6 @@
     updateStatsUI();
   });
 
-  // Prevent play before name
   video.addEventListener("play", function blockPlay(e) {
     if (!nameEntered) {
       e.preventDefault();
@@ -356,9 +406,80 @@
     }
   }, true);
 
-  // Load any previous name/progress
-  loadProgress();
+  // ---- Admin Reports UI ----
+  function createAdminPanel() {
+    if (!isAdminMode()) return;
 
-  // Auto-focus the name input
+    const panel = document.createElement("div");
+    panel.className = "admin-panel";
+    panel.innerHTML = `
+      <h2>All Viewers Report</h2>
+      <p class="admin-hint">This panel is only visible with <code>?admin=1</code> in the URL. Click refresh to load latest data.</p>
+      <button id="refreshReportsBtn" class="refresh-btn">Refresh Reports</button>
+      <div id="reportsList" class="reports-list">Loading...</div>
+    `;
+    mainApp.querySelector("main").appendChild(panel);
+
+    const listEl = document.getElementById("reportsList");
+    const refreshBtn = document.getElementById("refreshReportsBtn");
+
+    async function renderReports() {
+      listEl.innerHTML = "<p>Loading reports...</p>";
+      const viewers = await loadAllReports();
+      const entries = Object.values(viewers);
+
+      if (entries.length === 0) {
+        listEl.innerHTML = "<p class='no-reports'>No viewers yet. Share the link (without admin=1) so people can watch.</p>";
+        return;
+      }
+
+      // Sort by lastUpdated descending
+      entries.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+
+      listEl.innerHTML = entries.map(v => {
+        const pct = (v.percent || 0).toFixed(1);
+        const time = formatTime(v.maxWatched || 0);
+        const status = pct >= 99 ? "✅ Completed" : pct > 0 ? "▶ In progress" : "— Not started";
+        const updated = v.lastUpdated ? new Date(v.lastUpdated).toLocaleString() : "—";
+        return `
+          <div class="report-card">
+            <div class="report-name">${escapeHtml(v.name || "Unknown")}</div>
+            <div class="report-meta">
+              <span>${pct}% watched</span>
+              <span>${time}</span>
+              <span>${status}</span>
+            </div>
+            <div class="report-details">
+              Skips blocked: ${v.skipAttempts || 0} · Pauses: ${v.pauseCount || 0} · Sessions: ${v.sessionCount || 1}<br>
+              Last update: ${updated}<br>
+              Group: ${v.groupId || "—"}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    refreshBtn.addEventListener("click", renderReports);
+    renderReports();
+  }
+
+  // Init
+  loadProgress();
   setTimeout(() => nameInput.focus(), 100);
+
+  // Create admin panel after a short delay so mainApp exists
+  if (isAdminMode()) {
+    // Show main app immediately in admin mode so we can see reports
+    nameGate.style.display = "none";
+    mainApp.style.display = "block";
+    createAdminPanel();
+  }
 })();
